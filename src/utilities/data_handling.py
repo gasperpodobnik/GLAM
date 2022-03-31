@@ -65,4 +65,11 @@ def add_metadata(exam_list, additional_metadata_name, additional_metadata_dict):
                 continue
             exam[additional_metadata_name][view] = []
             for j, image in enumerate(exam[view]):
-                exam[additional_metadata_name][view].append(additional_metadata_dict[image])
+                to_be_appended = additional_metadata_dict.get(image)
+                if to_be_appended is None:
+                    del exam[additional_metadata_name][view]
+                    for k in list(exam.keys()):
+                        if k.startswith(view):
+                            exam.pop(k, None)
+                else:
+                    exam[additional_metadata_name][view].append(to_be_appended)

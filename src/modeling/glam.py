@@ -112,8 +112,9 @@ class MILSingleImageModel(nn.Module):
                                               crop_positions[i, j, :],
                                               output[i, j, :, :],
                                               method=crop_method)
-        if device == 'gpu':
-            output = output.cuda()
+        
+        if 'cuda' in str(device).lower():
+            output = output.to(device)
         return output
 
     def _retrieve_crop_featuremap(self, feature_map, crop_positions, crop_size):
@@ -171,14 +172,14 @@ class MILSingleImageModel(nn.Module):
 
         # select the patch location
         patch_select_cam = self.saliency_map_global
-        small_x_locations = self.region_proposal_network.forward(x_original, self.cam_size, patch_select_cam, device=self.device_str)
+        small_x_locations = self.region_proposal_network.forward(x_original, self.cam_size, patch_select_cam, device=self.device)
 
         # patch
         # convert crop locations that is on self.cam_size to x_original
         self.patch_locations = self._convert_crop_position(small_x_locations, self.cam_size, x_original)
 
         # cropping retriever
-        crops_variable = self._retrieve_crop(x_original, self.patch_locations, self.region_proposal_network.crop_method, device=self.device_str)
+        crops_variable = self._retrieve_crop(x_original, self.patch_locations, self.region_proposal_network.crop_method, device=self.device)
         self.patches = crops_variable.data.cpu().numpy()
 
         # local module to form the local segmentation map

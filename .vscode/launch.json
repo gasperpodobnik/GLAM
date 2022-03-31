@@ -1,0 +1,66 @@
+{
+    // Use IntelliSense to learn about possible attributes.
+    // Hover to view descriptions of existing attributes.
+    // For more information, visit: https://go.microsoft.com/fwlink/?linkid=830387
+    "version": "0.2.0",
+    "configurations": [
+        {
+            "name": "Python: Current File",
+            "type": "python",
+            "request": "launch",
+            "program": "${file}",
+            "console": "integratedTerminal",
+            "justMyCode": true
+        },
+        {
+            "name": "cropping",
+            "type": "python",
+            "request": "launch",
+            "program": "src/cropping/crop_mammogram.py",
+            "console": "integratedTerminal",
+            "justMyCode": false,
+            "args": [
+                "--input-data-folder",
+                "/local/scratch-2/gp518/preprocessed_data/PARTNER/images",
+                "--output-data-folder",
+                "/local/scratch-2/gp518/preprocessed_data/PARTNER_cropped",
+                "--exam-list-path",
+                "/local/scratch-2/gp518/preprocessed_data/PARTNER/exam_list_before_cropping.pkl",
+                "--cropped-exam-list-path",
+                "/local/scratch-2/gp518/preprocessed_data/PARTNER_cropped/exam_list_after_cropping.pkl",
+                "--num-processes",
+                "10"
+            ],
+        },
+        {
+            "name": "inference",
+            "type": "python",
+            "request": "launch",
+            "program": "src/scripts/run_model.py",
+            "console": "integratedTerminal",
+            "env": {
+                "CUDA_VISIBLE_DEVICES": "2"
+            },
+            "justMyCode": false,
+            "args": [
+                "--model-path",
+                "models/",
+                "--data-path",
+                "/local/scratch-2/gp518/preprocessed_data/PARTNER_GLAM/data.pkl",
+                "--image-path",
+                "/local/scratch-2/gp518/preprocessed_data/PARTNER_GLAM/cropped_images",
+                "--segmentation-path",
+                "/local/scratch-2/gp518/preprocessed_data/PARTNER/labels",
+                "--output-path",
+                "/local/scratch-2/gp518/preprocessed_data/PARTNER_GLAM/debug_out",
+                "--device-type",
+                "gpu",
+                "--gpu-number",
+                "0",
+                "--model-index",
+                "model_joint",
+                "--visualization-flag"
+            ],
+        }
+    ]
+}

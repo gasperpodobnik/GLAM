@@ -27,7 +27,7 @@ assert torch.__version__ == '1.1.0', "GLAM not tested for pytorch != 1.1.0 (nor 
 
 def visualize_example(input_img, saliency_maps, true_segs,
                       patch_locations, patch_img,
-                      save_dir, parameters):
+                      save_dir, parameters, dice_b, dice_m, threshold):
     """
     Function that visualizes the saliency maps for an example
     """
@@ -43,6 +43,9 @@ def visualize_example(input_img, saliency_maps, true_segs,
     alpha_red = plt.cm.get_cmap('Reds')
     alpha_red._init()
     alpha_red._lut[:, -1] = alphas
+    alpha_oranges = plt.cm.get_cmap('Oranges')
+    alpha_oranges._init()
+    alpha_oranges._lut[:, -1] = alphas
 
     # create visualization template
     total_num_subplots = 4 + parameters["top_k_per_class"]
@@ -82,15 +85,17 @@ def visualize_example(input_img, saliency_maps, true_segs,
     subfigure = figure.add_subplot(1, total_num_subplots, 4)
     subfigure.imshow(input_img[0, 0, :, :], aspect='equal', cmap='gray')
     resized_cam_malignant = cv2.resize(saliency_maps[0, 1, :, :], (W, H))
+    # subfigure.imshow(resized_cam_malignant > threshold, cmap=alpha_oranges, clim=[0.0, 1.0])
     subfigure.imshow(resized_cam_malignant, cmap=alpha_red, clim=[0.0, 1.0])
-    subfigure.set_title("SM: malignant")
+    subfigure.set_title(f"SM: malignant: {dice_m}")
     subfigure.axis('off')
 
     subfigure = figure.add_subplot(1, total_num_subplots, 3)
     subfigure.imshow(input_img[0, 0, :, :], aspect='equal', cmap='gray')
     resized_cam_benign = cv2.resize(saliency_maps[0, 0, :, :], (W, H))
+    # subfigure.imshow(resized_cam_benign > threshold, cmap=alpha_oranges, clim=[0.0, 1.0])
     subfigure.imshow(resized_cam_benign, cmap=alpha_green, clim=[0.0, 1.0])
-    subfigure.set_title("SM: benign")
+    subfigure.set_title(f"SM: benign: {dice_b}")
     subfigure.axis('off')
 
     # crops
@@ -125,12 +130,13 @@ def run_model(model, exam_list, parameters, turn_on_visualization):
         device = torch.device("cuda:{}".format(parameters["gpu_number"]))
     else:
         device = torch.device("cpu")
+    
     model = model.to(device)
     model.eval()
 
     # initialize data holders
     pred_dict = {"image_index": [], "benign_pred": [], "malignant_pred": [],
-                 "benign_label": [], "malignant_label": []}
+                 "benign_label": [], "malignant_label": [], "benign_dice": [], "malignant_dice": []}
     with torch.no_grad():
         # iterate through each exam
         for datum in tqdm.tqdm(exam_list):
@@ -150,7 +156,8 @@ def run_model(model, exam_list, parameters, turn_on_visualization):
                 loaded_image = loading.process_image(loaded_image, view, datum["best_center"][view][0])
                 # load segmentation if available
                 benign_seg_path = os.path.join(parameters["segmentation_path"], "{0}_{1}".format(short_file_path, "benign.png"))
-                malignant_seg_path = os.path.join(parameters["segmentation_path"], "{0}_{1}".format(short_file_path, "malignant.png"))
+                # malignant_seg_path = os.path.join(parameters["segmentation_path"], "{0}_{1}".format(short_file_path, "malignant.png"))
+                malignant_seg_path = os.path.join(parameters["segmentation_path"], "{0}.png".format(short_file_path))
                 benign_seg = None
                 malignant_seg = None
                 if os.path.exists(benign_seg_path):
@@ -166,7 +173,11 @@ def run_model(model, exam_list, parameters, turn_on_visualization):
                         view=view,
                         horizontal_flip=False,
                     )
-                    malignant_seg = loaded_seg
+                    # malignant_seg = loaded_seg
+                    top, bottom, left, right = datum['window_location'][view][0]
+                    if VIEWS.is_right(view):
+                        loaded_seg = np.fliplr(loaded_seg[top:bottom, left:right])
+                    malignant_seg = loading.process_image(loaded_seg, view, datum["best_center"][view][0])
                 # convert python 2D array into 4D torch tensor in N,C,H,W format
                 loaded_image = np.expand_dims(np.expand_dims(loaded_image, 0), 0).copy()
                 tensor_batch = torch.Tensor(loaded_image).to(device)
@@ -175,15 +186,23 @@ def run_model(model, exam_list, parameters, turn_on_visualization):
                 pred_numpy = output.data.cpu().numpy()
                 benign_pred, malignant_pred = pred_numpy[0, 0], pred_numpy[0, 1]
                 # save visualization
+                saliency_maps = model.saliency_map.data.cpu().numpy()
+                benign_dice = malignant_dice = None
+                # threshold = 1e-3
+                threshold = 5*1e-2
+                if malignant_seg is not None:
+                    # if short_file_path == '1004-L-CC':
+                    #     print('a')
+                    benign_dice = dice(malignant_seg.astype(bool), saliency_maps[0][0] > threshold)
+                    malignant_dice = dice(malignant_seg.astype(bool), saliency_maps[0][1] > threshold)
                 if turn_on_visualization:
-                    saliency_maps = model.saliency_map.data.cpu().numpy()
                     patch_locations = model.patch_locations
                     patch_imgs = model.patches
                     # patch_attentions = model.patch_attns[0, :].data.cpu().numpy()
                     save_dir = os.path.join(parameters["output_path"], "visualization", "{0}.png".format(short_file_path))
                     visualize_example(loaded_image, saliency_maps, [benign_seg, malignant_seg],
                                       patch_locations, patch_imgs,
-                                      save_dir, parameters)
+                                      save_dir, parameters, benign_dice, malignant_dice, threshold)
                 # propagate holders
                 benign_label, malignant_label = fetch_cancer_label_by_view(view, datum["cancer_label"])
                 pred_dict["image_index"].append(short_file_path)
@@ -191,8 +210,16 @@ def run_model(model, exam_list, parameters, turn_on_visualization):
                 pred_dict["malignant_pred"].append(malignant_pred)
                 pred_dict["benign_label"].append(benign_label)
                 pred_dict["malignant_label"].append(malignant_label)
+                pred_dict["benign_dice"].append(benign_dice)
+                pred_dict["malignant_dice"].append(malignant_dice)
     return pd.DataFrame(pred_dict)
 
+def dice(mask_gt, mask_pred):
+    volume_sum = mask_gt.sum() + mask_pred.sum()
+    if volume_sum == 0:
+        return np.NaN
+    volume_intersect = np.logical_and(mask_gt, mask_pred).sum()
+    return np.round(2 * volume_intersect / volume_sum, 3)
 
 def run_single_model(model_path, data_path, parameters, turn_on_visualization):
     """

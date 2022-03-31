@@ -273,6 +273,8 @@ def crop_mammogram(input_data_folder, exam_list_path, cropped_exam_list_path, ou
     with Pool(num_processes) as pool:
         cropped_image_info = pool.map(crop_mammogram_one_image_func, image_list)
 
+    cropped_image_info = [i for i in cropped_image_info if i is not None]
+
     window_location_dict = dict([x[0] for x in cropped_image_info])
     rightmost_points_dict = dict([x[1] for x in cropped_image_info])
     bottommost_points_dict = dict([x[2] for x in cropped_image_info])
@@ -309,7 +311,8 @@ def crop_mammogram_one_image(scan, input_file_path, output_file_path, num_iterat
             1 / 3
         )
     except Exception as error:
-        print(input_file_path, "\n\tFailed to crop image because image is invalid.", str(error))
+        print(input_file_path, "\n\tFailed to crop image because image is invalid.", str(error), 'Skipping this case')
+        return None
     else:
 
         top, bottom, left, right = cropping_info[0]
@@ -342,7 +345,10 @@ def crop_mammogram_one_image_short_path(scan, input_data_folder, output_data_fol
         num_iterations=num_iterations,
         buffer_size=buffer_size,
     )
-    return list(zip([scan['short_file_path']] * 4, cropping_info))
+    if cropping_info is None:
+        return None
+    else:
+        return list(zip([scan['short_file_path']] * 4, cropping_info))
 
 
 if __name__ == "__main__":
